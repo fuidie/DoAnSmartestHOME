@@ -1,31 +1,21 @@
-YÊU CẦU HỆ THỐNG
-Phần cứng
-
-ESP32-WROOM-32S (2 module)
-
-Cảm biến:
-
-MQ-2 (gas)
-
-DHT11 (nhiệt độ – độ ẩm)
-
-GP2Y1010AU0F (bụi PM2.5)
-
-HC-SR501 (PIR chuyển động)
-
-Cảm biến độ ẩm đất (soil moisture)
-
-Thiết bị điều khiển:
-
-Servo MG90S (cửa thoát hiểm)
-
-Quạt 12V (qua relay)			
-
-4–5 đèn LED phòng (qua relay hoặc transistor)
-ajah	jiai	ak
-
-Keypad 4×3 cho khóa cửa thông minh
-
-Module RFID MFRC522 (nếu dùng mở cửa)
-
-Nguồn 5V–12V tùy thiết bị
+BƯỚC 1:
+tải tất cả các file và foulder thư viện
+file TEST2 chạy riêng biệt
+file TEST1 chạy chung với data_config.h, icon.h, index_html.h, mybutton.h
+BƯỚC 2:
+cài các thư viện cần thiết cho TEST1 bằng cách:
+Tools → Manage Libraries
+BƯỚC 3:
+sửa bên trong file test2 ở phần đầu chỉnh sửa các thành phần:
+#define BLYNK_TEMPLATE_ID "XXXX"
+#define BLYNK_TEMPLATE_NAME "XXXX"
+#define BLYNK_AUTH_TOKEN "XXXX"
+và 
+char ssid[] = "YOUR_WIFI";
+char pass[] = "YOUR_PASSWORD";
+BƯỚC 4: 
+Mở project trong Arduino IDE
+Vào Tools → Board → ESP32 Arduino → ESP32 Dev Module
+Chọn cổng COM của ESP32
+Nhấn Upload (→)
+Đợi compile & upload hoàn tất
