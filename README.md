@@ -19,9 +19,10 @@ Thiết bị điều khiển:
 
 Servo MG90S (cửa thoát hiểm)
 
-Quạt 12V (qua relay)
+Quạt 12V (qua relay)			
 
 4–5 đèn LED phòng (qua relay hoặc transistor)
+ajah	jiai	ak
 
 Keypad 4×3 cho khóa cửa thông minh
 
