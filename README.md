@@ -14,7 +14,7 @@ Tools → Manage Libraries
 
 BƯỚC 3:
 
-sửa bên trong file test2 ở phần đầu chỉnh sửa các thành phần:
+sửa bên trong file PIRandGAS1.ino ở phần đầu chỉnh sửa các thành phần:
 
 #define BLYNK_TEMPLATE_ID "XXXX"
 
