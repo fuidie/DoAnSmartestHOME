@@ -2,7 +2,7 @@
  * ESP32 CHIP 2
  * MQ-2 + Buzzer + Servo + Fan + 3 Buttons + LED
  * + PIR Security + 4 ROOM LIGHTS + ALL ON/OFF
- * + BLYNK (gas + security + 4 đèn + all)
+ * + BLYNK (gas + security + 4 đèn + all + events)
  *************************************************/
 
 // ===== BLYNK CHO CHIP 2 =====
@@ -149,7 +149,29 @@ unsigned long lastDebAllOff = 0;
 
 const unsigned long DEBOUNCE_P = 120;
 
-// ============= HÀM BLYNK HỖ TRỢ =============
+// ====== CỜ CHỐNG SPAM EVENT BLYNK ======
+bool gasEventSent    = false;   // đã gửi event gas_alert trong lần vượt ngưỡng này chưa
+bool motionEventSent = false;   // đã gửi event pir_motion trong lần phát hiện người này chưa
+
+// ============= HÀM TIỆN ÍCH =============
+
+void setDoorState(bool open, bool syncBlynk = true) {
+  doorOpen = open;
+  doorServo.write(open ? SERVO_OPEN_ANGLE : SERVO_CLOSED_ANGLE);
+  if (syncBlynk) {
+    Blynk.virtualWrite(V20, open ? 1 : 0);
+  }
+}
+
+void setFanState(bool on, bool syncBlynk = true) {
+  fanOn = on;
+  digitalWrite(FAN_PIN, on ? HIGH : LOW);
+  if (syncBlynk) {
+    Blynk.virtualWrite(V19, on ? 1 : 0);
+  }
+}
+
+// ================= BLYNK HỖ TRỢ =================
 
 // Khi vừa kết nối Blynk → đồng bộ trạng thái từ server
 BLYNK_CONNECTED() {
@@ -280,8 +302,7 @@ BLYNK_WRITE(V19) {
   int v = param.asInt();
 
   if (!gasActive) {
-    fanOn = (v == 1);
-    digitalWrite(FAN_PIN, fanOn ? HIGH : LOW);
+    setFanState(v == 1, false);
     Serial.print("BLYNK - QUAT: ");
     Serial.println(fanOn ? "ON" : "OFF");
   } else {
@@ -297,9 +318,8 @@ BLYNK_WRITE(V20) {
   int v = param.asInt();
 
   if (gasActive) {
-    doorOpen = true;
-    doorServo.write(SERVO_OPEN_ANGLE);
-
+    // đang có GAS → luôn mở, không cho đóng
+    setDoorState(true, false);
     if (v == 0) {
       Blynk.virtualWrite(V20, 1);
     }
@@ -307,13 +327,11 @@ BLYNK_WRITE(V20) {
     return;
   }
 
-  doorOpen = (v == 1);
-  doorServo.write(doorOpen ? SERVO_OPEN_ANGLE : SERVO_CLOSED_ANGLE);
+  setDoorState(v == 1, false);
 
   Serial.print("BLYNK - CUA THOAT HIEM: ");
   Serial.println(doorOpen ? "MO" : "DONG");
 }
-
 
 // ================== SETUP ==================
 void setup() {
@@ -355,8 +373,7 @@ void setup() {
   digitalWrite(LED_SYS_PIN, HIGH);
 
   doorServo.attach(SERVO_PIN);
-  doorServo.write(SERVO_CLOSED_ANGLE);
-  doorOpen = false;
+  setDoorState(false, false);   // cửa đóng, không sync Blynk ở đây
 
   pinMode(PIR_PIN, INPUT);
   pinMode(PIR_LED_PIN, OUTPUT);
@@ -383,7 +400,7 @@ void setup() {
   pinMode(BTN_ALL_ON_PIN,  INPUT_PULLUP);
   pinMode(BTN_ALL_OFF_PIN, INPUT_PULLUP);
 
-  Serial.println("=== MQ-2 + Buzzer + Servo + Fan + 3 Buttons + LED + PIR + 4 ROOM LIGHTS + ALL ON/OFF + BLYNK (non-blocking) ===");
+  Serial.println("=== MQ-2 + Buzzer + Servo + Fan + 3 Buttons + LED + PIR + 4 ROOM LIGHTS + ALL ON/OFF + BLYNK + EVENTS ===");
   delay(2000);
 }
 
@@ -413,6 +430,9 @@ void loop() {
     // CẬP NHẬT LÊN BLYNK (V11) KHI NHẤN NÚT VẬT LÝ
     Blynk.virtualWrite(V11, securityEnabled ? 1 : 0);
 
+    // reset cờ event chuyển động khi tắt/bật lại chế độ an ninh
+    motionEventSent = false;
+
     Serial.println(securityEnabled ?
                    ">>> SECURITY MODE: ON (BUTTON)" :
                    ">>> SECURITY MODE: OFF (BUTTON)");
@@ -435,13 +455,26 @@ void loop() {
     digitalWrite(PIR_LED_PIN, presence ? HIGH : LOW);
 
     if (presence != lastPresence) {
-      Serial.println(presence ?
-                     "SECURITY: Phat hien chuyen dong (CO NGUOI)." :
-                     "SECURITY: Khong phat hien chuyen dong (KHONG CON AI).");
+      if (presence) {
+        Serial.println("SECURITY: Phat hien chuyen dong (CO NGUOI).");
+
+        // ==== GỬI EVENT BLYNK KHI PHÁT HIỆN NGƯỜI ====
+        if (!motionEventSent) {
+          Blynk.logEvent("pir_motion", "SECURITY: Phat hien chuyen dong trong khu vuc giam sat");
+          motionEventSent = true;
+        }
+      } else {
+        Serial.println("SECURITY: Khong phat hien chuyen dong (KHONG CON AI).");
+
+        // cho phép lần sau phát hiện lại bắn event tiếp
+        motionEventSent = false;
+      }
+
       lastPresence = presence;
     }
   } else {
     digitalWrite(PIR_LED_PIN, LOW);
+    motionEventSent = false;
   }
 
   // ================== PHẦN NÚT CỬA / QUẠT / HỆ THỐNG GAS ==================
@@ -455,17 +488,10 @@ void loop() {
     lastServoBtnTime = now;
 
     if (!gasActive) {
-      doorOpen = !doorOpen;
+      setDoorState(!doorOpen, true);
 
-      if (doorOpen) {
-        doorServo.write(SERVO_OPEN_ANGLE);
-        Blynk.virtualWrite(V20, 1);
-        Serial.println(">>> NÚT 1: MỞ CỬA THỦ CÔNG");
-      } else {
-        doorServo.write(SERVO_CLOSED_ANGLE);
-        Blynk.virtualWrite(V20, 0);
-        Serial.println(">>> NÚT 1: ĐÓNG CỬA THỦ CÔNG");
-      }
+      Serial.print(">>> NÚT 1: ");
+      Serial.println(doorOpen ? "MỞ CỬA THỦ CÔNG" : "ĐÓNG CỬA THỦ CÔNG");
     } else {
       Serial.println(">>> NÚT 1: ĐANG CÓ GAS, CỬA ĐANG AUTO MỞ (KHÔNG ĐÓNG THỦ CÔNG ĐƯỢC)");
     }
@@ -481,10 +507,7 @@ void loop() {
     lastFanBtnTime = now;
 
     if (!gasActive) {
-      fanOn = !fanOn;
-
-      digitalWrite(FAN_PIN, fanOn ? HIGH : LOW);
-      Blynk.virtualWrite(V19, fanOn ? 1 : 0);
+      setFanState(!fanOn, true);
 
       Serial.print(">>> NÚT 2 QUẠT: ");
       Serial.println(fanOn ? "BẬT QUẠT THỦ CÔNG" : "TẮT QUẠT THỦ CÔNG");
@@ -511,6 +534,9 @@ void loop() {
 
       digitalWrite(LED_SYS_PIN, LOW);
       Blynk.virtualWrite(V10, 0);
+
+      // reset cờ event gas khi tắt hệ thống gas
+      gasEventSent = false;
 
       Serial.println(">>> NÚT 3: TẮT HỆ THỐNG GAS");
     } else {
@@ -630,6 +656,7 @@ void loop() {
   // ================== AUTO KHI CÓ GAS (CHỈ KHI systemEnabled = true) ==================
   bool overThreshold = (systemEnabled && gasValue > threshold);
 
+  // Khi GAS vượt ngưỡng
   if (overThreshold && !gasActive) {
     gasActive = true;
 
@@ -637,30 +664,31 @@ void loop() {
     fanBeforeGas  = fanOn;
 
     if (!doorOpen) {
-      doorOpen = true;
-      doorServo.write(SERVO_OPEN_ANGLE);
-      Blynk.virtualWrite(V20, 1);
+      setDoorState(true, true);
     }
 
     if (!fanOn) {
-      fanOn = true;
-      digitalWrite(FAN_PIN, HIGH);
-      Blynk.virtualWrite(V19, 1);
+      setFanState(true, true);
+    }
+
+    // ==== GỬI EVENT BLYNK KHI CÓ GAS ====
+    if (!gasEventSent) {
+      Blynk.logEvent("gas_alert", String("Nong do GAS vuot nguong: ") + gasValue);
+      gasEventSent = true;
     }
 
     Serial.println(">>> AUTO: GAS VƯỢT NGƯỠNG -> MỞ CỬA & BẬT QUẠT");
   }
 
+  // Khi GAS về lại bình thường
   if (!overThreshold && gasActive) {
     gasActive = false;
 
-    doorOpen = doorBeforeGas;
-    doorServo.write(doorOpen ? SERVO_OPEN_ANGLE : SERVO_CLOSED_ANGLE);
-    Blynk.virtualWrite(V20, doorOpen ? 1 : 0);
+    setDoorState(doorBeforeGas, true);
+    setFanState(fanBeforeGas, true);
 
-    fanOn = fanBeforeGas;
-    digitalWrite(FAN_PIN, fanOn ? HIGH : LOW);
-    Blynk.virtualWrite(V19, fanOn ? 1 : 0);
+    // cho phép lần sau vượt ngưỡng lại bắn event tiếp
+    gasEventSent = false;
 
     Serial.println(">>> AUTO: HẾT GAS -> TRẢ CỬA & QUẠT VỀ TRẠNG THÁI BAN ĐẦU");
   }
